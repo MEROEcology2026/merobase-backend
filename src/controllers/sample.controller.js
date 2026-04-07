@@ -1,5 +1,6 @@
 import pool from "../db/index.js";
 import { success, error } from "../utils/response.js";
+import { generateSampleId } from "../utils/idGenerator.js";
 
 export const getAllSamples = async (req, res, next) => {
   try {
@@ -36,15 +37,30 @@ export const getSampleById = async (req, res, next) => {
 export const createSample = async (req, res, next) => {
   try {
     const {
-      sample_id, sample_name, sample_type, project_type, project_number,
+      sample_name, sample_type, project_type, project_number,
       sample_number, dive_site, collector_name, collection_date,
       latitude, longitude, storage_location, kingdom, genus, family,
       species, depth, temperature, substrate, sample_length,
       morphology, microbiology, molecular, publication
     } = req.body;
 
+    /* ================= AUTO GENERATE SAMPLE ID ================= */
+    const sample_id = generateSampleId(
+      sample_type, project_type, project_number, sample_number
+    );
+
     if (!sample_id) {
-      return error(res, "sample_id is required", 400);
+      return error(res, "Cannot generate sample ID — sample_type, project_type, project_number and sample_number are required", 400);
+    }
+
+    /* ================= CHECK FOR DUPLICATE ID ================= */
+    const existing = await pool.query(
+      "SELECT id FROM samples WHERE sample_id = $1",
+      [sample_id]
+    );
+
+    if (existing.rows.length > 0) {
+      return error(res, `Sample ID ${sample_id} already exists. Please use a different project or sample number.`, 409);
     }
 
     const result = await pool.query(
@@ -88,20 +104,42 @@ export const updateSample = async (req, res, next) => {
       morphology, microbiology, molecular, publication
     } = req.body;
 
+    /* ================= REGENERATE SAMPLE ID ON UPDATE ================= */
+    const new_sample_id = generateSampleId(
+      sample_type, project_type, project_number, sample_number
+    );
+
+    if (!new_sample_id) {
+      return error(res, "Cannot generate sample ID — required fields missing", 400);
+    }
+
+    /* ================= CHECK DUPLICATE IF ID CHANGED ================= */
+    if (new_sample_id !== id) {
+      const existing = await pool.query(
+        "SELECT id FROM samples WHERE sample_id = $1",
+        [new_sample_id]
+      );
+      if (existing.rows.length > 0) {
+        return error(res, `Sample ID ${new_sample_id} already exists.`, 409);
+      }
+    }
+
     const result = await pool.query(
       `UPDATE samples SET
-        sample_name=$1, sample_type=$2, project_type=$3, project_number=$4,
-        sample_number=$5, dive_site=$6, collector_name=$7, collection_date=$8,
-        latitude=$9, longitude=$10, storage_location=$11, kingdom=$12,
-        genus=$13, family=$14, species=$15, depth=$16, temperature=$17,
-        substrate=$18, sample_length=$19, morphology=$20, microbiology=$21,
-        molecular=$22, publication=$23, updated_at=NOW()
-       WHERE sample_id=$24 RETURNING *`,
+        sample_id=$1, sample_name=$2, sample_type=$3, project_type=$4,
+        project_number=$5, sample_number=$6, dive_site=$7,
+        collector_name=$8, collection_date=$9, latitude=$10,
+        longitude=$11, storage_location=$12, kingdom=$13, genus=$14,
+        family=$15, species=$16, depth=$17, temperature=$18,
+        substrate=$19, sample_length=$20, morphology=$21,
+        microbiology=$22, molecular=$23, publication=$24, updated_at=NOW()
+       WHERE sample_id=$25 RETURNING *`,
       [
-        sample_name, sample_type, project_type, project_number,
-        sample_number, dive_site, collector_name, collection_date,
-        latitude, longitude, storage_location, kingdom, genus, family,
-        species, depth, temperature, substrate, sample_length,
+        new_sample_id, sample_name, sample_type, project_type,
+        project_number, sample_number, dive_site, collector_name,
+        collection_date, latitude, longitude, storage_location,
+        kingdom, genus, family, species, depth, temperature,
+        substrate, sample_length,
         JSON.stringify(morphology || {}),
         JSON.stringify(microbiology || {}),
         JSON.stringify(molecular || {}),
@@ -149,7 +187,8 @@ export const searchSamples = async (req, res, next) => {
     if (query) {
       conditions.push(`(
         sample_name ILIKE $${i} OR species ILIKE $${i} OR
-        collector_name ILIKE $${i} OR dive_site ILIKE $${i}
+        collector_name ILIKE $${i} OR dive_site ILIKE $${i} OR
+        sample_id ILIKE $${i}
       )`);
       values.push(`%${query}%`);
       i++;
