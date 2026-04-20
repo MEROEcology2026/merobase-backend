@@ -7,15 +7,15 @@ import {
   deleteSample,
   searchSamples,
 } from "../controllers/sample.controller.js";
-import { protect } from "../middleware/auth.middleware.js";
+import { protect, requireAdmin } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
-router.get("/", protect, getAllSamples);
-router.get("/search", protect, searchSamples);
-router.get("/:id", protect, getSampleById);
-router.post("/", protect, createSample);
-router.put("/:id", protect, updateSample);
-router.delete("/:id", protect, deleteSample);
+router.get("/",          protect,              getAllSamples);
+router.get("/search",    protect,              searchSamples);
+router.get("/:id",       protect,              getSampleById);
+router.post("/",         protect,              createSample);
+router.put("/:id",       protect,              updateSample);
+router.delete("/:id",    protect, requireAdmin, deleteSample); // ✅ admin only
 
 export default router;
