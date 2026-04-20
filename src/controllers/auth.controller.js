@@ -95,3 +95,18 @@ export const getMe = async (req, res, next) => {
     next(err);
   }
 };
+
+/* ✅ NEW — returns users active in the last 15 minutes */
+export const getActiveUsers = async (req, res, next) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, username, role, last_active_at
+       FROM users
+       WHERE last_active_at > NOW() - INTERVAL '15 minutes'
+       ORDER BY last_active_at DESC`
+    );
+    return success(res, result.rows);
+  } catch (err) {
+    next(err);
+  }
+};
